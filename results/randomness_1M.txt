@@ -1,0 +1,44 @@
+ticks=1,004,987  increments=1,004,986  span=11.63 days
+
+T1  step-size constancy
+      -0.1000  x 503,408  (50.0910%)
+      +0.1000  x 501,578  (49.9090%)
+      -> non-(+-0.1) moves: 0   CLEAN
+
+T2  directional bias
+      up=501,578  down=503,408  P(up)=0.499090
+      se=0.000499  z=-1.825  p=0.0681   PASS
+
+T3  autocorrelation
+      |acf| 95% band = +-0.001955
+      lag1=-0.001067  lag2=-0.000449  lag3=-0.000962  lag10=-0.002666
+      largest |acf| at lag 10: -0.002666
+      lags outside band: 5/54  (expect ~2.7 by chance)   <<< STRUCTURE
+
+T4  Ljung-Box (h=50)
+      Q=61.76  chi2_crit=67.50  p=0.1230   PASS
+
+T5  Wald-Wolfowitz runs
+      runs=503,028  expected=502,492.3  z=+1.069  p=0.2852   PASS
+
+T6  conditional bias  P(up | previous k moves)
+      k= 1  patterns=    2  chi2=      4.48  p=0.1065   most extreme P(up)=0.4986   PASS
+      k= 2  patterns=    4  chi2=      5.13  p=0.2738   most extreme P(up)=0.4984   PASS
+      k= 3  patterns=    8  chi2=      8.16  p=0.4178   most extreme P(up)=0.4975   PASS
+      k= 4  patterns=   16  chi2=     13.04  p=0.6696   most extreme P(up)=0.4953   PASS
+      k= 6  patterns=   64  chi2=     58.70  p=0.6637   most extreme P(up)=0.5105   PASS
+      k= 8  patterns=  256  chi2=    270.98  p=0.2487   most extreme P(up)=0.4695   PASS
+      k=10  patterns= 1024  chi2=   1004.38  p=0.6633   most extreme P(up)=0.4434   PASS
+      k=12  patterns= 4096  chi2=   4040.97  p=0.7269   most extreme P(up)=0.6368   PASS
+
+T7  spectral flatness
+      max/mean power = 13.97  (white-noise guide ~16.1)   PASS
+
+T8  time-of-day effect (minute buckets)
+      buckets=1440  chi2=1447.6  p=0.4386   PASS
+
+T9  inter-tick gaps (seconds)
+           1s  x 1,004,984  (99.9998%)
+           7s  x 1  (0.0001%)
+           8s  x 1  (0.0001%)
+

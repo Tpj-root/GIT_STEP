@@ -1,0 +1,6 @@
+# Keep LF inside the images regardless of the checkout platform. A CRLF shell
+# script or conf file copied into a Linux container fails with confusing errors
+# ("\r: command not found"), which is a classic Windows-handover trap.
+* text=auto eol=lf
+*.png binary
+*.ico binary

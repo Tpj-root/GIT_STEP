@@ -1,0 +1,41 @@
+# One command to run the whole terminal:  docker compose up --build
+#
+# The frontend container serves the built app AND proxies /api and /stream to
+# the backend, so only ONE port needs publishing and nothing host-specific is
+# baked into the bundle. Open http://localhost:5173
+#
+# WINDOWS + MT5: the MetaTrader5 Python package talks to a locally running MT5
+# terminal over Windows IPC. A Linux container cannot reach it, so BROKER=mt5
+# does NOT work in Docker. See "Windows handover" in the README — run the
+# backend natively on Windows for MT5; paper and deriv brokers work in Docker.
+
+services:
+  backend:
+    build: ./backend
+    image: step-index-backend:latest
+    env_file:
+      - path: .env
+        required: false          # sensible defaults; paper broker needs nothing
+    environment:
+      DB_PATH: /data/trading.db
+    volumes:
+      - trading-data:/data       # named volume: no host path, works on Windows
+    expose:
+      - "8010"
+    ports:
+      - "127.0.0.1:8010:8010"    # loopback only, for doctor.py and debugging
+    restart: unless-stopped
+    stop_grace_period: 10s
+
+  frontend:
+    build: ./frontend
+    image: step-index-frontend:latest
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  trading-data:

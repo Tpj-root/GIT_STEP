@@ -1,0 +1,16 @@
+split-half replication: A=502,493  B=502,493 increments
+
+T2   A: P(up)=0.499513  z=-0.690  p=0.4912
+T2   B: P(up)=0.498666  z=-1.892  p=0.0587
+T2 ALL: P(up)=0.499090  z=-1.825  p=0.0681
+
+T3 half A: 1 lags outside band -> [23]
+T3 half B: 4 lags outside band -> [10, 24, 25, 34]
+T3 exceed in BOTH halves: NONE
+T3 same SIGN in both halves: NONE
+
+largest |acf| in full sample and what it would be worth:
+   lag 10: acf=-0.002666
+   best achievable win rate from this = 0.501333
+   break-even win rate needed at 1.95x payout = 0.512821
+   shortfall = 0.011487  (9x too small)

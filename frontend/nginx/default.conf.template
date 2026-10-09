@@ -1,0 +1,40 @@
+# Rendered at container start by nginx's envsubst entrypoint.
+# BACKEND_ORIGIN lets one image serve both layouts:
+#   http://backend:8010              all-in-Docker (default)
+#   http://host.docker.internal:8010 backend running natively on Windows for MT5
+server {
+    listen 80;
+    # Also bind IPv6: `localhost` resolves to ::1 first on many hosts, and an
+    # IPv4-only listener makes healthchecks and probes fail while the service
+    # is actually fine.
+    listen [::]:80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass ${BACKEND_ORIGIN};
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # The event stream is long-lived. Without the upgrade headers nginx
+    # downgrades it to a normal request and the socket closes immediately;
+    # without the long read timeout it drops during quiet markets.
+    location /stream {
+        proxy_pass ${BACKEND_ORIGIN}/stream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host       $host;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+}

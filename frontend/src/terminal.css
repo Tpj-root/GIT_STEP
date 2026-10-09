@@ -1,0 +1,405 @@
+/* Step Index Terminal — instrument panel, not a marketing page.
+   Rules: no rounded cards, no shadows, no gradients, no decorative motion.
+   Colour encodes state and nothing else. Every figure uses tabular numerals so
+   digits do not jitter as prices tick. */
+
+:root {
+  --bg:        #07090d;
+  --panel:     #0e1117;
+  --panel-2:   #131823;
+  --line:      #1e2530;
+  --line-2:    #2a3341;
+
+  --text:      #ccd3de;
+  --text-dim:  #78828f;
+  --text-face: #4d5663;
+
+  --long:      #17b98a;
+  --short:     #ef4d56;
+  --armed:     #f5a524;
+  --critical:  #ff3b30;
+  --accent:    #4a9eff;
+
+  --ok:        #17b98a;
+  --bad:       #ef4d56;
+
+  --h-top:     34px;
+  --h-bottom:  212px;
+  --w-side:    248px;
+
+  --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* every figure is tabular so columns stay put while ticking */
+.num, input, td, th, .val { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ frame */
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: var(--h-top) 1fr var(--h-bottom);
+  border: 2px solid transparent;
+  transition: border-color 120ms linear;
+}
+/* The armed/killed rail is an EXTRA row. Without this the rail consumes the
+   1fr track and the whole terminal collapses. */
+.app.has-rail { grid-template-rows: auto var(--h-top) 1fr var(--h-bottom); }
+/* Armed state is unmissable by design: the entire frame is bordered, not a badge. */
+.app.armed  { border-color: var(--armed); }
+.app.killed { border-color: var(--critical); }
+
+.armed-rail {
+  grid-column: 1 / -1;
+  background: var(--armed);
+  color: #17130a;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  font-size: 10px;
+  padding: 3px 10px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.killed-rail { background: var(--critical); color: #fff; }
+
+/* ------------------------------------------------------------------ top bar */
+.top {
+  display: flex; align-items: stretch; gap: 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.top > * { display: flex; align-items: center; }
+.top .grow { flex: 1; }
+
+.sym-select {
+  appearance: none;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 0; border-right: 1px solid var(--line);
+  font: inherit; font-weight: 600;
+  padding: 0 26px 0 10px; height: 100%;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+                    linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+.sym-select:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+.tf-group { border-right: 1px solid var(--line); }
+.tf {
+  background: none; border: 0; border-right: 1px solid var(--line);
+  color: var(--text-face); font: inherit; font-weight: 600;
+  padding: 0 9px; height: 100%; cursor: pointer;
+}
+.tf:last-child { border-right: 0; }
+.tf:hover { color: var(--text); background: var(--panel-2); }
+.tf[aria-pressed="true"] { color: var(--bg); background: var(--text); }
+
+.lamp { display: flex; align-items: center; gap: 5px; padding: 0 10px; color: var(--text-dim); }
+.lamp b { color: var(--text); font-weight: 600; }
+.dot { width: 7px; height: 7px; flex: none; background: var(--text-face); }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }
+.dot.warn { background: var(--armed); }
+
+.mode-switch { display: flex; height: 100%; border-left: 1px solid var(--line); }
+.mode-btn {
+  background: var(--panel-2); border: 0; border-right: 1px solid var(--line);
+  color: var(--text-face); font: inherit; font-weight: 700;
+  letter-spacing: .06em; padding: 0 14px; cursor: pointer;
+}
+.mode-btn[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.mode-btn.auto[aria-pressed="true"] { background: var(--armed); color: #17130a; }
+.mode-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ------------------------------------------------------------------ middle */
+.middle { display: grid; grid-template-columns: 1fr var(--w-side); min-height: 0; }
+.chart-wrap { position: relative; min-width: 0; background: var(--bg); }
+/* Crosshair readout. Follows the cursor; falls back to the last bar so it is
+   never blank. pointer-events:none so it never eats a drag on the chart. */
+.chart-legend {
+  position: absolute; top: 7px; left: 10px; z-index: 3;
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.chart-legend .pair { font-weight: 700; letter-spacing: .04em; }
+.chart-legend .tf {
+  color: var(--text-face); text-transform: uppercase;
+  letter-spacing: .09em; font-size: 10px; font-weight: 700;
+}
+.chart-legend .stamp { color: var(--text-dim); }
+.chart-legend .ohlc { display: flex; gap: 4px; align-items: baseline; }
+.chart-legend .ohlc i,
+.chart-legend .stoptag i {
+  font-style: normal; color: var(--text-face); font-size: 10px; font-weight: 700;
+}
+.chart-legend .ohlc b { font-weight: 600; margin-right: 5px; }
+.chart-legend .stoptag { display: flex; gap: 4px; align-items: baseline; }
+.chart-legend .stoptag b { font-weight: 700; }
+/* Must sit ABOVE the chart canvas: the canvas is absolutely positioned and
+   painted later in DOM order, so without z-index the loading state is hidden
+   and an empty pane looks like a broken chart rather than a loading one. */
+.chart-empty {
+  position: absolute; inset: 0; z-index: 2;
+  display: grid; place-items: center; background: var(--bg);
+  color: var(--text-face); letter-spacing: .08em; text-transform: uppercase; font-size: 11px;
+}
+
+/* ------------------------------------------------------------------ side */
+.side { border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; }
+.sec-head {
+  padding: 5px 10px; font-size: 10px; font-weight: 700;
+  letter-spacing: .11em; text-transform: uppercase; color: var(--text-face);
+  background: var(--panel-2); border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.sec-head:first-child { border-top: 0; }
+
+.row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 3px 10px; gap: 8px; min-height: 24px;
+}
+.row + .row { border-top: 1px solid rgba(30,37,48,.55); }
+.row label, .row .k { color: var(--text-dim); }
+.row .val { font-weight: 600; }
+.row .val.long  { color: var(--long); }
+.row .val.short { color: var(--short); }
+
+input[type="number"], input[type="text"] {
+  width: 76px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line-2); font: inherit; font-weight: 600;
+  padding: 2px 6px; text-align: right;
+}
+input:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+input:disabled { color: var(--text-face); background: var(--panel-2); }
+input.invalid { border-color: var(--bad); }
+
+select.mini {
+  background: var(--bg); color: var(--text); border: 1px solid var(--line-2);
+  font: inherit; font-weight: 600; padding: 2px 4px;
+}
+
+.trade-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; padding: 8px 10px 10px; }
+.tbtn {
+  border: 0; font: inherit; font-weight: 800; letter-spacing: .08em;
+  padding: 9px 0; cursor: pointer; color: #06100c;
+}
+.tbtn.buy  { background: var(--long); }
+.tbtn.sell { background: var(--short); color: #180507; }
+.tbtn:disabled { background: var(--line-2); color: var(--text-face); cursor: not-allowed; }
+.tbtn:not(:disabled):hover { filter: brightness(1.12); }
+
+.hint { padding: 0 10px 9px; color: var(--text-face); font-size: 10px; line-height: 1.45; }
+
+/* ------------------------------------------------------------------ bottom */
+.bottom { border-top: 1px solid var(--line); background: var(--panel); display: grid; grid-template-rows: 26px 1fr; min-height: 0; }
+.tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.tab {
+  background: none; border: 0; border-right: 1px solid var(--line);
+  color: var(--text-face); font: inherit; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; font-size: 10px;
+  padding: 0 12px; cursor: pointer;
+}
+.tab[aria-selected="true"] { color: var(--text); background: var(--panel); }
+.tab .count { color: var(--text-face); font-weight: 600; margin-left: 5px; }
+
+.kill {
+  margin-left: auto; background: var(--critical); color: #fff; border: 0;
+  font: inherit; font-weight: 800; letter-spacing: .09em; font-size: 10px;
+  padding: 0 14px; cursor: pointer; text-transform: uppercase;
+}
+.kill:hover { filter: brightness(1.15); }
+.kill.released { background: var(--line-2); color: var(--text-dim); }
+
+.tbl-wrap { overflow: auto; min-height: 0; }
+table { width: 100%; border-collapse: collapse; }
+th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; font-size: 10px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--text-face);
+  background: var(--panel-2); border-bottom: 1px solid var(--line);
+  padding: 4px 10px; white-space: nowrap;
+}
+td { padding: 3px 10px; border-bottom: 1px solid rgba(30,37,48,.5); white-space: nowrap; }
+td.r, th.r { text-align: right; }
+tbody tr:hover { background: var(--panel-2); }
+.empty { padding: 16px 10px; color: var(--text-face); text-align: center; letter-spacing: .06em; font-size: 11px; }
+
+.pill {
+  display: inline-block; padding: 0 5px; font-size: 10px; font-weight: 800;
+  letter-spacing: .05em;
+}
+.pill.buy  { background: rgba(23,185,138,.16); color: var(--long); }
+.pill.sell { background: rgba(239,77,86,.16);  color: var(--short); }
+.pill.ok   { background: rgba(23,185,138,.16); color: var(--long); }
+.pill.rej  { background: rgba(239,77,86,.16);  color: var(--short); }
+.pill.auto { background: rgba(245,165,36,.18); color: var(--armed); }
+.pill.manual { background: var(--line); color: var(--text-dim); }
+
+.pos { color: var(--long); } .neg { color: var(--short); }
+
+.linkish { background: none; border: 0; color: var(--text-dim); font: inherit; cursor: pointer; text-decoration: underline; padding: 0; }
+.linkish:hover { color: var(--text); }
+
+/* ------------------------------------------------------------------ dialog */
+.scrim { position: fixed; inset: 0; background: rgba(3,5,8,.82); display: grid; place-items: center; z-index: 50; }
+.dialog { width: 430px; background: var(--panel); border: 1px solid var(--armed); }
+.dialog h2 {
+  margin: 0; padding: 10px 14px; font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; background: var(--armed); color: #17130a;
+}
+.dialog .body { padding: 12px 14px; }
+.dialog .warn { color: var(--armed); margin: 0 0 10px; line-height: 1.5; }
+.dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 0 0 12px; }
+.dialog dt { color: var(--text-dim); }
+.dialog dd { margin: 0; text-align: right; font-weight: 700; }
+.dialog .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; }
+.dialog button { border: 0; font: inherit; font-weight: 800; letter-spacing: .07em; padding: 9px 0; cursor: pointer; }
+.btn-cancel { background: var(--line-2); color: var(--text); }
+.btn-arm { background: var(--armed); color: #17130a; }
+
+/* ------------------------------------------------------------------ alerts */
+.alerts { position: fixed; top: 42px; left: 50%; transform: translateX(-50%); z-index: 60; width: min(620px, 92vw); }
+.alert {
+  display: flex; justify-content: space-between; gap: 12px; align-items: flex-start;
+  padding: 7px 11px; margin-bottom: 1px; font-weight: 600;
+  border-left: 3px solid var(--text-dim); background: var(--panel-2);
+}
+.alert.critical { border-left-color: var(--critical); background: #2a0f12; color: #ffd9d9; }
+.alert.warn { border-left-color: var(--armed); background: #2a210c; color: #ffe9c2; }
+.alert.info { border-left-color: var(--accent); }
+.alert button { background: none; border: 0; color: inherit; opacity: .65; cursor: pointer; font: inherit; padding: 0; }
+.alert button:hover { opacity: 1; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--line-2); }
+::-webkit-scrollbar-thumb:hover { background: #3a4655; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ------------------------------------------------------- indicator manager */
+.ind-row { border-bottom: 1px solid rgba(30,37,48,.55); padding: 4px 10px 5px; }
+.ind-row.off { opacity: .58; }
+.ind-row.off:hover { opacity: 1; }
+.ind-head { display: flex; align-items: center; gap: 7px; }
+.ind-name { font-weight: 600; flex: 1; }
+.ind-tag {
+  font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase;
+  padding: 0 4px; background: rgba(245,165,36,.16); color: var(--armed);
+}
+.ind-tag.dim { background: var(--line); color: var(--text-face); }
+
+.eye {
+  width: 15px; height: 15px; flex: none; padding: 0; cursor: pointer;
+  background: none; border: 1px solid var(--line-2); color: var(--text-face);
+  font-size: 8px; line-height: 1; display: grid; place-items: center;
+}
+.eye.on { color: var(--accent); border-color: var(--accent); }
+.eye:hover { border-color: var(--text-dim); color: var(--text); }
+
+.ind-params { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 0 22px; }
+.param { display: flex; align-items: center; gap: 4px; }
+.param > span { color: var(--text-face); font-size: 10px; }
+.param input { width: 50px; padding: 1px 4px; }
+
+/* ------------------------------------------------------------ chart panes */
+.chart-stack { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.chart-pane { position: relative; min-height: 0; }
+.chart-pane.main { flex: 1 1 auto; }
+/* Each oscillator gets its own fixed slice, so toggling one does not resize
+   the price chart out from under the trader mid-read. Fixed rather than
+   proportional: the price pane should shrink, never the readable minimum. */
+.chart-pane.osc { flex: 0 0 132px; border-top: 1px solid var(--line-2); }
+.chart-pane.osc:last-child { flex-basis: 148px; }  /* room for the time axis */
+.chart-canvas { position: absolute; inset: 0; }
+.osc-legend { font-size: 10px; }
+.osc-name {
+  color: var(--text-dim); font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------- collapsible sections */
+.sec-toggle {
+  width: 100%; display: flex; align-items: center; gap: 6px;
+  font: inherit; cursor: pointer; text-align: left;
+}
+.sec-toggle .caret { color: var(--text-face); font-size: 9px; width: 8px; }
+.sec-toggle .sec-title { flex: 1; }
+.sec-toggle:hover { color: var(--text); background: #171d28; }
+.sec-toggle:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* The side panel is the one place content genuinely exceeds the viewport, so
+   make the overflow visible rather than silently clipping the controls. */
+.side { scrollbar-gutter: stable; }
+.side::-webkit-scrollbar-thumb { background: #38445a; }
+
+.tz-btn {
+  background: var(--panel-2); border: 0; border-left: 1px solid var(--line);
+  color: var(--text-dim); font: inherit; font-weight: 700;
+  letter-spacing: .07em; font-size: 10px; padding: 0 9px; height: 100%;
+  cursor: pointer;
+}
+.tz-btn:hover { color: var(--text); background: #171d28; }
+
+/* ------------------------------------------------- one-click signal chip */
+/* Anchored over the canvas at the bar AFTER the signal bar. Nudged up/left so
+   it points at the candle rather than covering it. */
+.sig-chip {
+  position: absolute; z-index: 4;
+  display: flex; align-items: stretch;
+  transform: translate(6px, -50%);
+  box-shadow: 0 0 0 1px rgba(7,9,13,.9);
+}
+/* near the right edge the chip grows leftwards instead of off-screen */
+.sig-chip.flip { transform: translate(calc(-100% - 6px), -50%); }
+/* Matches the flip-marker palette, not the BUY/SELL buttons: the chip and the
+   marker describe the SAME signal, so they should read as one object. The side
+   panel's own buttons stay green/red because those are ordinary action buttons. */
+.sig-chip.buy  { --sig: #7CFF2E; }
+.sig-chip.sell { --sig: #FF8A3D; }
+
+.sig-take {
+  background: var(--sig); color: #06100c; border: 0;
+  font: inherit; font-weight: 800; font-size: 10px; letter-spacing: .06em;
+  padding: 3px 8px; cursor: pointer; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.sig-chip.sell .sig-take { color: #1a0c02; }
+.sig-take:hover { filter: brightness(1.15); }
+
+.sig-x {
+  background: var(--panel-2); color: var(--text-dim); border: 0;
+  border-left: 1px solid rgba(7,9,13,.5);
+  font: inherit; font-size: 9px; padding: 0 5px; cursor: pointer;
+}
+.sig-x:hover { color: var(--text); background: var(--line-2); }
+
+.snd-btn {
+  background: var(--panel-2); border: 0; border-left: 1px solid var(--line);
+  color: var(--text-face); font: inherit; font-size: 12px;
+  padding: 0 9px; height: 100%; cursor: pointer;
+}
+.snd-btn:hover { background: #171d28; color: var(--text); }
+.snd-btn.on { color: var(--ok); }
+/* enabled but the browser has not allowed audio yet — an alert you believe is
+   armed but is not is worse than no alert at all, so say so */
+.snd-btn.blocked { color: var(--armed); }

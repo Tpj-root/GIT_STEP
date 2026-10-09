@@ -1,0 +1,24 @@
+# Overlay for the ONE case Docker cannot cover: MT5 lot trading on Windows.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.windows-mt5.yml up
+#
+# The MetaTrader5 Python package drives a locally installed MT5 terminal over
+# Windows IPC. Docker Desktop runs Linux containers inside a WSL2 VM, which
+# cannot reach that terminal — so with BROKER=mt5 the backend must run natively
+# on Windows. This overlay drops the backend container and points the frontend
+# at the host instead.
+#
+# On the Windows host, in one terminal:
+#   py -3.11 -m venv .venv
+#   .venv\Scripts\pip install -r backend\requirements.txt MetaTrader5
+#   .venv\Scripts\uvicorn app.main:app --host 0.0.0.0 --port 8010   (from backend\)
+services:
+  backend:
+    profiles: ["never"]          # not started by this overlay
+
+  frontend:
+    environment:
+      BACKEND_ORIGIN: http://host.docker.internal:8010
+    depends_on: !reset []
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
