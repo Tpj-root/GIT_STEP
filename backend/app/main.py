@@ -22,6 +22,7 @@ from .risk import RiskGuard, Reject
 from .store import Store
 from .brokers import PaperBroker, MT5Broker, DerivContractBroker
 from .indicators import specs as indicator_specs, overlay_specs
+from .deriv_auth import get_ws_url
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)-7s %(name)-12s %(message)s")
@@ -33,7 +34,9 @@ DEFAULT_SUBS = [("stpRNG", 60), ("frxXAUUSD", 60)]
 class App:
     """Process-wide singletons, grouped so tests can build one in isolation."""
     def __init__(self) -> None:
-        self.feed = DerivFeed(settings.ws_url, stale_after=settings.stale_tick_seconds)
+        self.feed = DerivFeed(settings.ws_url, stale_after=settings.stale_tick_seconds,
+                              url_provider=get_ws_url,
+                              headers={"Deriv-App-ID": settings.deriv_app_id})
         self.chart = ChartService(self.feed)
         self.store = Store(settings.db_path)
         self.risk = RiskGuard(settings.hard_max_lots, settings.hard_max_daily_loss,

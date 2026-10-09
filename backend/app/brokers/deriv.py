@@ -36,13 +36,11 @@ class DerivContractBroker:
             self.connected = False
             return False
         try:
-            res = await self.feed._send({"authorize": self.token})
+            res = await self.feed._send({"balance": 1})
             a = res.get("authorize", {})
-            self.account = {
-                "loginid": a.get("loginid"), "is_virtual": bool(a.get("is_virtual")),
-                "currency": a.get("currency"), "balance": a.get("balance"),
-                "scopes": a.get("scopes", []),
-            }
+            self.account = {"is_virtual": settings.deriv_account_type == "demo",
+                            "balance": res["balance"]["balance"],
+                            "currency": res["balance"].get("currency", "USD")}
             if not self.account["is_virtual"]:
                 log.warning("Deriv token is for a REAL account (%s) -- "
                             "this is live money", self.account["loginid"])

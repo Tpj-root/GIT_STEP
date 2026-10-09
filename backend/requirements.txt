@@ -7,3 +7,5 @@ aiosqlite>=0.20
 # Windows only -- the MT5 bridge. Install separately; the app runs without it
 # (PaperBroker is the default and MetaTrader5 is imported lazily).
 # MetaTrader5>=5.0.45 ; sys_platform == "win32"
+requests>=2.31
+requests>=2.31

@@ -19,6 +19,9 @@ log = logging.getLogger("feed")
 MAX_COUNT = 5000          # Deriv hard cap, verified live
 PING_SECONDS = 30.0
 BACKOFF_CAP = 30.0
+# websockets >= 14 renamed the header kwarg
+_HEADER_KW = ("additional_headers"
+              if int(websockets.__version__.split(".")[0]) >= 14 else "extra_headers")
 
 
 @dataclass
@@ -46,8 +49,14 @@ class FeedState:
 
 
 class DerivFeed:
-    def __init__(self, ws_url: str, stale_after: float = 10.0) -> None:
-        self.ws_url = ws_url
+    def __init__(self, ws_url: str, stale_after: float = 10.0,
+                 url_provider: Optional[Callable[[], Awaitable[str]]] = None,
+                 headers: Optional[dict] = None) -> None:
+        self.ws_url = ws_url                      # fallback / static URL
+        # New Deriv API: the URL carries a ONE-TIME OTP, so it must be fetched
+        # fresh on every (re)connect -- never cached.
+        self.url_provider = url_provider
+        self.headers = headers or {}
         self.stale_after = stale_after
         self.state = FeedState.disconnected
         self.last_message_at: float = 0.0   # ANY frame -- socket liveness
@@ -60,6 +69,10 @@ class DerivFeed:
         self._req_id = 0
         self._pending: dict[int, asyncio.Future] = {}
         self._subs: set[tuple[str, int]] = set()
+        # series with a live server-side `subscribe` on the CURRENT socket. The
+        # new API answers a repeat subscribe with AlreadySubscribed.
+        self._streaming: set[tuple[str, int]] = set()
+        self._sub_lock = asyncio.Lock()
         self._pollers: dict[tuple[str, int], asyncio.Task] = {}
         self.streaming_blocked = False   # set when subscribe:1 is refused
         self._task: Optional[asyncio.Task] = None
@@ -134,9 +147,12 @@ class DerivFeed:
         while not self._stop.is_set():
             try:
                 await self._set_state(FeedState.connecting)
+                url = await self.url_provider() if self.url_provider else self.ws_url
+                kw = {_HEADER_KW: self.headers} if self.headers else {}
                 async with websockets.connect(
-                    self.ws_url, open_timeout=30, max_size=16_000_000,
+                    url, open_timeout=30, max_size=16_000_000,
                     ping_interval=None,  # we drive our own Deriv-level ping
+                    **kw,
                 ) as ws:
                     self._ws = ws
                     self.last_message_at = time.time()
@@ -163,6 +179,7 @@ class DerivFeed:
             finally:
                 self._ready.clear()
                 self._ws = None
+                self._streaming.clear()     # subscriptions die with the socket
                 self._fail_pending(ConnectionError("socket closed"))
                 await self._set_state(FeedState.disconnected)
 
@@ -248,7 +265,7 @@ class DerivFeed:
 
     async def fetch_active_symbols(self) -> list:
         try:
-            msg = await self._send({"active_symbols": "brief", "product_type": "basic"})
+            msg = await self._send({"active_symbols": "brief"})
             return msg.get("active_symbols", []) or []
         except Exception as e:                            # noqa: BLE001
             log.warning("active_symbols failed: %s", e)
@@ -279,32 +296,47 @@ class DerivFeed:
         return [seen[k] for k in sorted(seen)]
 
     async def subscribe(self, symbol: str, granularity: int, count: int = 1000) -> list[Candle]:
-        """Subscribe to live bars and return the seeded history in one step.
+        """Seed history and make sure this series keeps updating.
 
-        Deriv refuses `subscribe:1` from geo/IP-restricted networks with a
-        misleading `InvalidSymbol` -- the same symbol fetches history fine. When
-        that happens we transparently fall back to polling so the app still runs.
+        New API rule: a second `subscribe` for something already streamed is
+        refused with AlreadySubscribed (it used to be allowed). So:
+          * already streaming on this socket -> history snapshot only
+          * server says AlreadySubscribed    -> history + poll this series
+          * InvalidSymbol on subscribe       -> geo/IP block, poll instead
         """
-        self._subs.add((symbol, granularity))
-        key = (symbol, granularity)
-        req = {"ticks_history": symbol, "end": "latest", "count": min(count, MAX_COUNT),
-               "style": "candles", "granularity": granularity, "adjust_start_time": 1}
+        async with self._sub_lock:          # concurrent callers must not race
+            key = (symbol, granularity)
+            self._subs.add(key)
+            req = {"ticks_history": symbol, "end": "latest", "count": min(count, MAX_COUNT),
+                   "style": "candles", "granularity": granularity, "adjust_start_time": 1}
+            poller_alive = key in self._pollers and not self._pollers[key].done()
 
-        candles: list[Candle] = []
-        if not self.streaming_blocked:
-            try:
-                msg = await self._send({**req, "subscribe": 1})
+            candles: list[Candle] = []
+            if key in self._streaming or poller_alive:
+                msg = await self._send(req)
                 candles = [Candle.from_deriv(c) for c in msg.get("candles", [])]
-            except RuntimeError as e:
-                if "InvalidSymbol" not in str(e):
-                    raise
-                log.warning("streaming subscribe refused (%s) -- falling back to polling", e)
-                self.streaming_blocked = True
-
-        if self.streaming_blocked:
-            msg = await self._send(req)
-            candles = [Candle.from_deriv(c) for c in msg.get("candles", [])]
-            self._start_poller(symbol, granularity)
+            else:
+                streamed = False
+                if not self.streaming_blocked:
+                    try:
+                        msg = await self._send({**req, "subscribe": 1})
+                        candles = [Candle.from_deriv(c) for c in msg.get("candles", [])]
+                        self._streaming.add(key)
+                        streamed = True
+                    except RuntimeError as e:
+                        if "AlreadySubscribed" in str(e):
+                            log.info("%s/%ss: already subscribed on server -- polling it",
+                                     symbol, granularity)
+                        elif "InvalidSymbol" in str(e):
+                            log.warning("streaming subscribe refused (%s) -- "
+                                        "falling back to polling", e)
+                            self.streaming_blocked = True
+                        else:
+                            raise
+                if not streamed:
+                    msg = await self._send(req)
+                    candles = [Candle.from_deriv(c) for c in msg.get("candles", [])]
+                    self._start_poller(symbol, granularity)
 
         if self.on_history:
             await self.on_history(symbol, granularity, candles)
@@ -349,6 +381,7 @@ class DerivFeed:
 
     async def unsubscribe(self, symbol: str, granularity: int) -> None:
         self._subs.discard((symbol, granularity))
+        self._streaming.discard((symbol, granularity))
         t = self._pollers.pop((symbol, granularity), None)
         if t:
             t.cancel()

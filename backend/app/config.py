@@ -21,14 +21,16 @@ class Settings(BaseSettings):
     """Process-level settings. Credentials live here and nowhere else."""
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    deriv_app_id: str = "1089"
-    deriv_ws_url: str = "wss://ws.derivws.com/websockets/v3"
+    # ---- Deriv NEW API (REST OTP -> WebSocket) ---------------------------
+    deriv_app_id: str = ""                    # your Deriv app id
+    deriv_api_token: Optional[str] = None     # your PAT (Bearer token)
+    deriv_account_id: Optional[str] = None    # e.g. DOT94586275
+    deriv_account_type: str = "demo"          # demo | real  (keep demo!)
+    deriv_rest_url: str = "https://api.derivws.com"
+    deriv_ws_base: str = "wss://api.derivws.com/trading/v1/options/ws"
 
-    # Deriv API token (Settings > API token on deriv.com). Needs the `read` and
-    # `trade` scopes. A token is bound to ONE account, so a demo (VRTC) token
-    # can only ever touch the demo account -- that is the safety property to
-    # rely on, not a config flag.
-    deriv_api_token: Optional[str] = None
+    # A token is bound to ONE account, so a demo token can only ever touch the
+    # demo account -- that is the safety property to rely on, not a config flag.
     deriv_contract_type: str = "MULT"     # MULT | TURBOS
     deriv_multiplier: int = 100
 
@@ -47,7 +49,9 @@ class Settings(BaseSettings):
 
     @property
     def ws_url(self) -> str:
-        return f"{self.deriv_ws_url}?app_id={self.deriv_app_id}"
+        """Fallback URL only (public, no login). The real URL, with a fresh
+        one-time OTP, comes from deriv_auth.get_ws_url() on every connect."""
+        return f"{self.deriv_ws_base}/public"
 
 
 SignalAction = Literal["reverse", "open-only", "close-only"]
